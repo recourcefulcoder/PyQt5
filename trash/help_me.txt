@@ -1,0 +1,4 @@
+[18, 22, 24] tests_ids
+{'first_grade': 18, 'history_test': 22, 'yandex_test': 24} tests
+[['Роман Тихонов', [['yandex_test', 0.0], ['history_test', 50.0]], ['yandex_test', 'history_test']]] students
+{18: [], 22: [], 24: []} data

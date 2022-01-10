@@ -1,0 +1,663 @@
+import sys
+import sqlite3
+
+from pprint import pprint
+
+from PyQt5.QtCore import Qt, QSize
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget,
+                             QTableWidgetItem, QLineEdit)
+from PyQt5.QtGui import QImage, QPalette, QBrush, QIcon
+from PyQt5 import uic
+
+from student_window import (StudentWindow)
+
+from time import sleep
+
+
+# при сборке проекта не забыть идентификатор -i, иначе иконка будет отсутствовать!!
+
+def except_hook(cls, exception, traceback):
+    sys.__excepthook__(cls, exception, traceback)
+
+
+class HelloWindow(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent, Qt.Window)
+        uic.loadUi('ui_files/welcome_form.ui', self)
+        self.authorization = False
+        self.initUi()
+
+    def initUi(self):
+        self.setWindowTitle('Вход в систему')
+        self.setWindowIcon(QIcon('images/icon.png'))
+
+        self.pass_val.setEchoMode(QLineEdit.Password)
+
+        self.show_pass.setIcon(QIcon('images/eye.jpg'))
+        self.show_pass.pressed.connect(lambda: self.pass_val.setEchoMode(QLineEdit.Normal))
+        self.show_pass.released.connect(lambda: self.pass_val.setEchoMode(QLineEdit.Password))
+
+        self.setWindowFilePath('images/icon.png')  # MacOs иначе не поставит иконку
+
+        self.con = sqlite3.connect('database.sqlite')
+
+        sImage = QImage("images/base.jpg").scaled(QSize(self.width(), self.height()))
+        palette = QPalette()
+        palette.setBrush(QPalette.Window, QBrush(sImage))
+        self.setPalette(palette)
+
+        self.setFixedSize(QSize(self.width(), self.height()))
+        self.enter_btn.clicked.connect(self.find_user)
+
+    def find_user(self):
+        if self.login_val.text() == '' or self.pass_val.text() == '':
+            self.status_label.setText('Введите данные для входа')
+            self.status_label.setStyleSheet('border-style: solid; border-width: 1px; border-color: red;')
+            return
+        self.status_label.setText('')
+        self.status_label.setStyleSheet('')
+
+        cur = self.con.cursor()
+
+        data = cur.execute(f"SELECT * FROM users"
+                           f"   WHERE login = '{self.login_val.text().strip()}'"
+                           ).fetchone()
+
+        if not data:
+            self.status_label.setText('Пользователь не найден')
+            self.status_label.setStyleSheet('border-style: solid; border-width: 1px; border-color: red;')
+            return
+        elif str(data[2]) != self.pass_val.text():
+            self.status_label.setText('Неверный пароль')
+            return
+        else:
+            self.status_label.setText('Успешная авторизация!')
+            # sleep(2) можно попробовать что-то иное, замораживающее конкретно виджет, а не код.
+            self.authorization = True
+            self.close()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Enter or event.key() + 1 == Qt.Key_Enter:
+            self.find_user()
+
+    def closeEvent(self, event):
+        if self.authorization:
+            if self.login_val.text().strip() == 'teacher':
+                self.user_win = TeacherWindow()
+            else:
+                self.user_win = StudentWindow()
+            self.user_win.show()
+        self.con.close()
+
+
+class TeacherWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        uic.loadUi('ui_files/t_main_win.ui', self)
+        self.initUi()
+
+    def initUi(self):
+        self.setFixedSize(QSize(self.width(), self.height()))
+
+        self.setWindowTitle('Выберите действие')
+        self.setWindowIcon(QIcon('images/icon.png'))
+
+        self.create_change_test.clicked.connect(self.btn_clicked)
+        self.del_test.clicked.connect(self.btn_clicked)
+        self.edit_student_info.clicked.connect(self.btn_clicked)
+        self.add_del_student.clicked.connect(self.btn_clicked)
+        self.check_out_stat.clicked.connect(self.btn_clicked)
+        self.edit_personal_info.clicked.connect(self.btn_clicked)
+
+        self.setMouseTracking(True)
+
+    def btn_clicked(self):
+        if self.sender().text() == 'Создать/изменить тест':
+            self.action_widget = ChooseAction(self, 'тест')
+            self.action_widget.show()
+        elif self.sender().text() == 'Удалить тест':
+            self.action_widget = TestDeleteWindow(self)
+            self.action_widget.show()
+        elif self.sender().text() == 'Редактировать информацию об ученике':
+            self.action_widget = EditStudentInfoWindow(self)
+            self.action_widget.show()
+        elif self.sender().text() == 'Добавить/удалить ученика':
+            self.action_widget = ChooseAction(self, 'ученика')
+            self.action_widget.show()
+        elif self.sender().text() == 'Посмотреть статистику':
+            self.action_widget = CheckStatisticsWindow(self)
+            self.action_widget.show()
+        else:
+            self.action_widget = EditPersonalInfoWindow(self)
+            self.action_widget.show()
+        self.close()
+
+
+class ChooseAction(QWidget):
+    def __init__(self, parent, type):
+        super().__init__()
+        uic.loadUi('ui_files/choose_action.ui', self)
+        self.parent = parent
+        self.type = type
+        self.initUi()
+
+    def initUi(self):
+        self.setWindowTitle('Выберите действие')
+
+        self.object_type.setText(self.type)
+
+        if self.type == 'ученика':
+            self.open_protocol.addItems(['Добавить', 'Удалить'])
+        else:
+            self.open_protocol.addItems(['Изменить', 'Создать'])
+        self.confirm_btn.clicked.connect(self.load_widget)
+        self.return_btn.clicked.connect(self.return_parent)
+
+    def load_widget(self):
+        if self.type == 'ученика':
+            if self.open_protocol.currentText() == 'Добавить':
+                self.user_widget = AddDeleteStudentWindow(self, 'add')
+            else:
+                self.user_widget = AddDeleteStudentWindow(self, 'delete')
+        else:
+            if self.open_protocol.currentText() == 'Изменить':
+                self.user_widget = TestCreationRedactionWindow(self, 'change')
+            else:
+                self.user_widget = TestCreationRedactionWindow(self, 'create')
+        self.user_widget.show()
+        self.close()
+
+    def return_parent(self):
+        self.close()
+        self.parent.show()
+
+
+class ConfirmWindow(QWidget):
+    def __init__(self, type, parent, **kwargs):
+        super().__init__(parent, Qt.Window)
+        uic.loadUi('ui_files/confirm_win.ui', self)
+        self.type = type
+        self.values = kwargs
+        self.parent = parent
+        self.initUi()
+
+    def initUi(self):
+        self.message.setWordWrap(True)
+
+        self.setFixedSize(QSize(self.width(), self.height()))
+
+        self.message.setText(f'Вы уверены, что хотите {self.type} пользователя с указанными данными?')
+        self.login.setText(self.values['login'])
+        self.name.setText(self.values['name'])
+        self.surname.setText(self.values['surname'])
+
+        self.confirm_box.accepted.connect(self.act_with_user)
+        self.confirm_box.rejected.connect(self.close)
+
+    def act_with_user(self):
+        if self.type == 'добавить':
+            self.parent.status_label.setText('Пользователь успешно добавлен')
+            self.parent.status_label.setStyleSheet('border-style: solid; border-width:'
+                                                   ' 1px; border-color: green;')
+
+            self.con = sqlite3.connect('database.sqlite')
+
+            cur = self.con.cursor()
+
+            try:
+                cur.execute(f"INSERT INTO users(login, pass, name, surname) VALUES('{self.values['login']}', "
+                            f"'{self.values['password']}', '{self.values['name']}', '{self.values['surname']}')"
+                            )
+            except sqlite3.IntegrityError:
+                self.parent.status_label.setText('Пользователь с указанными данными уже существует')
+                self.parent.status_label.setStyleSheet('border-style: solid; border-width:'
+                                                       ' 1px; border-color: red;')
+
+            self.con.commit()
+
+            self.con.close()
+            self.close()
+        else:
+            self.parent.status_label.setText('Пользователь успешно удалён')
+            self.parent.status_label.setStyleSheet('border-style: solid; border-width:'
+                                                   ' 1px; border-color: green;')
+
+            self.con = sqlite3.connect('database.sqlite')
+
+            cur = self.con.cursor()
+
+            cur.execute(f"DELETE FROM users"
+                        f"  WHERE id={self.values['id']}"
+                        )
+
+            self.con.commit()
+
+            self.con.close()
+            self.close()
+
+            self.parent.show_everyone()
+
+
+class TestCreationRedactionWindow(QWidget):
+    def __init__(self, parent, action_protocol):
+        super().__init__()
+        if action_protocol == 'create':
+            uic.loadUi('ui_files/test_creation.ui', self)
+            self.setWindowTitle('Создание теста')
+        else:
+            uic.loadUi('ui_files/edit_test.ui', self)
+            self.setWindowTitle('Редактирование теста')
+        self.initUi()
+        self.parent = parent
+
+    def initUi(self):
+        self.return_btn.clicked.connect(self.return_parent)
+
+    def return_parent(self):
+        self.close()
+        self.parent.show()
+
+
+class TestDeleteWindow(QWidget):
+    def __init__(self, parent):
+        super().__init__()
+        uic.loadUi('ui_files/test_deletion.ui', self)
+        self.initUi()
+        self.parent = parent
+
+    def initUi(self):
+        pass
+
+
+class EditStudentInfoWindow(QWidget):
+    def __init__(self, parent):
+        super().__init__()
+        uic.loadUi('ui_files/delete_student.ui', self)
+        self.initUi()
+        self.parent = parent
+
+    def initUi(self):
+        self.setWindowTitle('Редактирование информации об ученике')
+        self.return_btn.clicked.connect(self.return_parent)
+        self.instruction_label.setText('Отредактируйте информацию в таблице и нажмите кнопку "подтвердить"')
+        self.action_btn.setText('Подтвердить')
+        self.search_protocol.addItems(['id', 'логину', 'имени', 'фамилии'])
+
+        self.find_btn.clicked.connect(self.find_with_parameter)
+
+    def return_parent(self):
+        self.close()
+        self.parent.show()
+
+    def find_with_parameter(self):
+        if self.search_val.text() == '':
+            self.find_status_label.setText('Пустой параметр поиска')
+            self.find_status_label.setStyleSheet('border-style: solid; border-width: 1px; border-color: red;')
+            return
+        elif not self.search_val.text().strip().isdigit() and self.search_protocol.currentText() == 'id':
+            self.find_status_label.setText('id может быть только числом')
+            self.find_status_label.setStyleSheet('border-style: solid; border-width: 1px; border-color: red;')
+            return
+        self.find_status_label.setText('')
+        self.find_status_label.setStyleSheet('')
+        con = sqlite3.connect('database.sqlite')
+
+        cur = con.cursor()
+
+        if self.search_protocol.currentText() == 'id':
+            find_protocol = 'id'
+        elif self.search_protocol.currentText() == 'логину':
+            find_protocol = 'login'
+        elif self.search_protocol.currentText() == 'имени':
+            find_protocol = 'name'
+        else:
+            find_protocol = 'surname'
+
+        data = cur.execute(f"SELECT id, login, name, surname from users"
+                           f"   WHERE login NOT LIKE 'teacher' AND "
+                           f"   {find_protocol} LIKE '%{self.search_val.text().strip()}%'"
+                           ).fetchall()
+
+        if not len(data):
+            self.find_status_label.setText('По вашему запросу ничего не нашлось')
+            self.students_table.setRowCount(0)
+            self.students_table.setColumnCount(0)
+        else:
+            self.fill_table(data)
+
+    def fill_table(self, data):
+        self.students_table.setRowCount(len(data))
+        self.students_table.setColumnCount(4)
+
+        for i in range(len(data)):
+            for j in range(4):
+                self.students_table.setItem(i, j, QTableWidgetItem(str(data[i][j])))
+
+        self.students_table.resizeColumnsToContents()
+
+    def show_everyone(self):
+        self.search_val.setText('')
+        self.find_status_label.setText('')
+        self.find_status_label.setStyleSheet('')
+        con = sqlite3.connect('database.sqlite')
+
+        cur = con.cursor()
+
+        data = cur.execute(f"SELECT id, login, name, surname FROM users"
+                           f"   WHERE login NOT LIKE 'teacher'"
+                           ).fetchall()
+
+        self.fill_table(data)
+
+
+class AddDeleteStudentWindow(QWidget):
+    def __init__(self, parent, action_protocol):
+        super().__init__()
+        if action_protocol == 'add':
+            uic.loadUi('ui_files/add_student.ui', self)
+            self.setWindowTitle('Добавление ученика')
+        else:
+            uic.loadUi('ui_files/delete_student.ui', self)
+            self.setWindowTitle('Удаление ученика')
+        self.action_protocol = action_protocol
+        self.initUi()
+        self.parent = parent
+
+    def initUi(self):
+        self.return_btn.clicked.connect(self.return_parent)
+        self.setFixedSize(QSize(self.width(), self.height()))
+        self.instruction_label.setText('Для удаления выберите логин ученика в таблице и нажмите кнопку "удалить"')
+        self.action_btn.setText('Удалить')
+        if self.action_protocol == 'add':
+            self.action_btn.clicked.connect(self.add_student)
+            self.pass_val.setEchoMode(QLineEdit.Password)
+            self.show_pass.setIcon(QIcon('images/eye.jpg'))
+            self.show_pass.pressed.connect(lambda: self.pass_val.setEchoMode(QLineEdit.Normal))
+            self.show_pass.released.connect(lambda: self.pass_val.setEchoMode(QLineEdit.Password))
+        else:
+            self.show_everyone_btn.clicked.connect(self.show_everyone)
+            self.find_btn.clicked.connect(self.find_with_parameter)
+            self.show_everyone()
+
+            self.action_btn.clicked.connect(self.delete_student)
+
+            self.students_table.verticalHeader().hide()
+
+            self.search_protocol.addItems(['id', 'логину', 'имени', 'фамилии'])
+
+            self.students_table.setHorizontalHeaderLabels(['id', 'логин', 'имя', 'фамилия'])
+
+    def add_student(self):
+        if self.login_val.text() == '' or self.pass_val.text() == '' or \
+                self.name_val.text() == '' or self.surname_val.text() == '':
+            self.status_label.setText('Введены не все данные')
+            self.status_label.setStyleSheet('border-style: solid; border-width: 1px; border-color: red;')
+            return
+        self.status_label.setText('')
+        self.status_label.setStyleSheet('')
+
+        new_widget = ConfirmWindow('добавить', self, login=self.login_val.text(),
+                                   name=self.name_val.text(),
+                                   surname=self.surname_val.text(),
+                                   password=self.pass_val.text())
+
+        new_widget.show()
+
+    def return_parent(self):
+        self.close()
+        self.parent.show()
+
+    def fill_table(self, data):
+        self.students_table.setRowCount(len(data))
+        self.students_table.setColumnCount(4)
+
+        for i in range(len(data)):
+            for j in range(4):
+                item = QTableWidgetItem(str(data[i][j]))
+                item.setFlags(Qt.ItemIsEnabled)
+                self.students_table.setItem(i, j, item)
+
+        # self.students_table.resizeColumnsToContents()
+
+    def show_everyone(self):
+        self.search_val.setText('')
+        self.find_status_label.setText('')
+        self.find_status_label.setStyleSheet('')
+        con = sqlite3.connect('database.sqlite')
+
+        cur = con.cursor()
+
+        data = cur.execute(f"SELECT id, login, name, surname FROM users"
+                           f"   WHERE login NOT LIKE 'teacher'"
+                           ).fetchall()
+
+        self.fill_table(data)
+
+    def find_with_parameter(self):
+        if self.search_val.text() == '':
+            self.find_status_label.setText('Пустой параметр поиска')
+            self.find_status_label.setStyleSheet('border-style: solid; border-width: 1px; border-color: red;')
+            return
+        elif not self.search_val.text().strip().isdigit() and self.search_protocol.currentText() == 'id':
+            self.find_status_label.setText('id может быть только числом')
+            self.find_status_label.setStyleSheet('border-style: solid; border-width: 1px; border-color: red;')
+            return
+        self.find_status_label.setText('')
+        self.find_status_label.setStyleSheet('')
+        con = sqlite3.connect('database.sqlite')
+
+        cur = con.cursor()
+
+        if self.search_protocol.currentText() == 'id':
+            find_protocol = 'id'
+        elif self.search_protocol.currentText() == 'логину':
+            find_protocol = 'login'
+        elif self.search_protocol.currentText() == 'имени':
+            find_protocol = 'name'
+        else:
+            find_protocol = 'surname'
+
+        data = cur.execute(f"SELECT id, login, name, surname from users"
+                           f"   WHERE login NOT LIKE 'teacher' AND "
+                           f"   {find_protocol} LIKE '%{self.search_val.text().strip()}%'"
+                           ).fetchall()
+
+        if not len(data):
+            self.find_status_label.setText('По вашему запросу ничего не нашлось')
+            self.students_table.setRowCount(0)
+            self.students_table.setColumnCount(0)
+        else:
+            self.fill_table(data)
+
+    def keyPressEvent(self, event):
+        if self.action_protocol == 'add':
+            if event.key() == Qt.Key_Enter or event.key() + 1 == Qt.Key_Enter:
+                self.add_student()
+
+    def delete_student(self):
+        confirm_win = ConfirmWindow('удалить', self,
+                                    id=self.students_table.item(self.students_table.currentRow(), 0).text(),
+                                    login=self.students_table.item(self.students_table.currentRow(), 1).text(),
+                                    name=self.students_table.item(self.students_table.currentRow(), 2).text(),
+                                    surname=self.students_table.item(self.students_table.currentRow(), 3).text())
+        confirm_win.show()
+
+
+class CheckStatisticsWindow(QWidget):
+    def __init__(self, parent):
+        super().__init__()
+        uic.loadUi('ui_files/statistics.ui', self)
+        self.initUi()
+        self.parent = parent
+
+    def initUi(self):
+        pass
+
+
+class EditPersonalInfoWindow(QWidget):
+    def __init__(self, parent):
+        super().__init__()
+        uic.loadUi('ui_files/edit_personal_info.ui', self)
+        self.initUi()
+        self.parent = parent
+
+    def initUi(self):
+        pass
+
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    win = TeacherWindow()
+    win.show()
+    sys.excepthook = except_hook
+    sys.exit(app.exec())
+
+
+
+***********************************СЛЕДУЮЩИЙ КОД******************************************
+
+
+
+class HelloWindow(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent, Qt.Window)
+        uic.loadUi('ui_files/welcome_form.ui', self)
+        self.authorization = False
+        self.initUi()
+
+    def initUi(self):
+        self.setWindowTitle('Вход в систему')
+        self.setWindowIcon(QIcon('images/icon.png'))
+
+        self.setWindowFilePath('images/icon.png')  # MacOs иначе не поставит иконку
+
+        self.search_protocol.addItems(['', 'Админ', 'Учитель', 'Ученик'])
+
+        self.con = sqlite3.connect('system_db.sqlite')
+
+        sImage = QImage("images/base.jpg").scaled(QSize(self.width(), self.height()))
+        palette = QPalette()
+        palette.setBrush(QPalette.Window, QBrush(sImage))
+        self.setPalette(palette)
+
+        self.setStyleSheet('QWidget#hi {background-image: url(images/base.jpg);}')
+
+        self.setFixedSize(QSize(self.width(), self.height()))
+        self.enter_btn.clicked.connect(self.find_user)
+
+    def find_user(self):
+        if self.login_val.text() == '' or self.pass_val.text() == '':
+            self.status_label.setText('Введите данные для входа')
+            self.status_label.setStyleSheet('border-style: solid; border-width: 1px; border-color: red;')
+            return
+        self.status_label.setText('')
+        self.status_label.setStyleSheet('')
+
+        cur = self.con.cursor()
+
+        if self.search_protocol.currentText() == '':
+            self.status_label.setText('Установите, пожалуйста, тип пользователя')
+            self.status_label.setStyleSheet('border-style: solid; border-width: 1px; border-color: red;')
+            return
+        elif self.search_protocol.currentText() == 'Админ':
+            data = cur.execute(f"SELECT * FROM admins"
+                               f"   WHERE login = '{self.login_val.text()}'"
+                               ).fetchone()
+        elif self.search_protocol.currentText() == 'Учитель':
+            data = cur.execute(f"SELECT * FROM teachers"
+                               f"   WHERE login = '{self.login_val.text()}'"
+                               ).fetchone()
+        else:
+            data = cur.execute(f"SELECT * FROM students"
+                               f"   WHERE login = '{self.login_val.text()}'"
+                               ).fetchone()
+        if not data:
+            self.status_label.setText('Пользователь не найден')
+            return
+        elif str(data[2]) != self.pass_val.text():
+            print(data)
+            self.status_label.setText('Неверный пароль')
+            return
+        else:
+            self.status_label.setText('Успешная авторизация!')
+            self.authorization = True
+            self.close()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Enter or event.key() + 1 == Qt.Key_Enter:
+            self.find_user()
+
+    def closeEvent(self, event):
+        if self.authorization:
+            if self.search_protocol.currentText() == 'Админ':
+                self.user_win = AdminWindow()
+            elif self.search_protocol.currentText() == 'Учитель':
+                self.user_win = TeacherWindow()
+            else:
+                self.user_win = StudentWindow()
+            self.user_win.show()
+        self.con.close()
+
+
+***********************************СЛЕДУЮЩИЙ КОД******************************************
+
+
+
+import sys
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QPushButton
+
+
+class Window2(QWidget):
+    def __init__(self):
+        super(Window2, self).__init__()
+        self.setWindowTitle('Window2')
+
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super(MainWindow, self).__init__()
+        self.setWindowTitle('MainWindow')
+        self.setWindowTitle('Window1')
+        self.setMinimumWidth(200)
+        self.setMinimumHeight(50)
+        self.button = QPushButton(self)
+        self.button.setText('Ok')
+        self.button.show()
+        self.button.clicked.connect(self.show_window_2)
+
+    def show_window_2(self):
+        self.w2 = Window2()
+        self.w2.show()
+        self.close()
+
+    def closeEvent(self, event):
+        print('yeap, actuallly closed')
+
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    w = MainWindow()
+    w.show()
+    sys.exit(app.exec_())
+
+
+
+
+***********************************СЛЕДУЮЩИЙ КОД******************************************
+
+
+
+# Когда вы запускаете приложение, Windows смотрит на исполняемый файл и пытается угадать,
+# к какой application group оно принадлежит. По умолчанию все скрипты Python сгруппированы
+# в одну и ту же группу "Python" , поэтому будет отображаться значок Python.
+# Чтобы это не происходило, нам нужно предоставить Windows другой идентификатор приложения.
+# Код ниже делает это, вызывая QtWin.setCurrentProcessExplicitAppUserModelID() с
+# пользовательским идентификатором приложения.
+try:
+    from PyQt5.QtWinExtras import QtWin
+
+    myappid = 'mycompany.myproduct.subproduct.version'
+    QtWin.setCurrentProcessExplicitAppUserModelID(myappid)
+except ImportError:
+    pass
+

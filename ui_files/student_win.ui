@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Form</class>
+ <widget class="QWidget" name="Form">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>360</width>
+    <height>190</height>
+   </rect>
+  </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
+  </property>
+  <property name="windowTitle">
+   <string>Выберите действие</string>
+  </property>
+  <widget class="QPushButton" name="complete_test_btn">
+   <property name="geometry">
+    <rect>
+     <x>95</x>
+     <y>50</y>
+     <width>170</width>
+     <height>30</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Пройти тест</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="statistics_btn">
+   <property name="geometry">
+    <rect>
+     <x>95</x>
+     <y>90</y>
+     <width>170</width>
+     <height>30</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Посмотреть статистику</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="change_pass_btn">
+   <property name="geometry">
+    <rect>
+     <x>180</x>
+     <y>150</y>
+     <width>170</width>
+     <height>30</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Изменить пароль</string>
+   </property>
+  </widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

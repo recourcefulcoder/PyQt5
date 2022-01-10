@@ -1,0 +1,198 @@
+class TestCreationRedactionWindow(QWidget):
+    def __init__(self, parent, action_protocol):
+        super().__init__()
+        if action_protocol == 'create':
+            uic.loadUi('ui_files/test_creation.ui', self)
+            self.setWindowTitle('Создание теста')
+        else:
+            uic.loadUi('ui_files/edit_test.ui', self)
+            self.setWindowTitle('Редактирование теста')
+        self.parent = parent
+        self.action_protocol = action_protocol
+        self.initUi()
+
+    def initUi(self):
+        self.return_btn.clicked.connect(self.return_parent)
+        self.setWindowIcon(QIcon('images/icon.png'))
+        if self.action_protocol == 'create':
+            self.instruction_btn.setIcon(QIcon('images/question.jpg'))
+            self.question_base.setColumnCount(2)
+            self.question_base.setHorizontalHeaderLabels(['id', 'название'])
+
+            self.test_questions.setColumnCount(2)
+            self.test_questions.setHorizontalHeaderLabels(['id', 'название'])
+
+            self.instruction_btn.setIcon(QIcon('images/question.jpg'))
+
+            con = sqlite3.connect('database.sqlite')
+
+            cur = con.cursor()
+
+            data = cur.execute(f"SELECT id, name FROM tasks"
+                               ).fetchall()
+
+            self.fill_base_table(data)
+
+            self.question_base.resizeColumnsToContents()
+            self.question_base.itemDoubleClicked.connect(lambda: self.give_task_info('base'))
+            self.test_questions.itemDoubleClicked.connect(lambda: self.give_task_info('test'))
+            self.add_question_btn.clicked.connect(self.add_question)
+            self.instruction_btn.clicked.connect(self.show_instruction)
+            self.delete_task_btn.clicked.connect(self.delete_test_task)
+            self.create_test_btn.clicked.connect(self.create_test)
+            self.del_question_btn.clicked.connect(self.delete_base_task)
+
+    def add_question(self):
+        self.test_creation_sl.setText('')
+        self.test_creation_sl.setStyleSheet('')
+        self.total_sl.setText('')
+        self.total_sl.setStyleSheet('')
+        if self.question_base.currentRow() != -1:
+            self.test_task_sl.setText('')
+            self.test_task_sl.setStyleSheet('')
+            self.test_questions.setRowCount(self.test_questions.rowCount() + 1)
+
+            item = QTableWidgetItem(str(self.question_base.item(self.question_base.currentRow(), 0).text()))
+            item.setFlags(Qt.ItemIsEnabled)
+            self.test_questions.setItem(self.test_questions.rowCount() - 1, 0,
+                                        item)
+
+            item = QTableWidgetItem(str(self.question_base.item(self.question_base.currentRow(), 1).text()))
+            item.setFlags(Qt.ItemIsEnabled)
+            self.test_questions.setItem(self.test_questions.rowCount() - 1, 1,
+                                        item)
+
+            cur = sqlite3.connect('database.sqlite').cursor()
+
+            data = cur.execute(f"SELECT id, name FROM tasks"
+                               f"   WHERE name NOT LIKE "
+                               f"   '{self.question_base.item(self.question_base.currentRow(), 1).text()}'"
+                               ).fetchall()
+
+            self.fill_base_table(data)
+        else:
+            self.test_task_sl.setText('Задание не выбрано')
+            self.test_task_sl.setStyleSheet('border-style: solid; border-width: 1px; border-color: red;')
+
+    def give_task_info(self, table_name):
+        cur = sqlite3.connect('database.sqlite').cursor()
+
+        if table_name == 'base':
+            data = list(cur.execute(f"SELECT * FROM tasks"
+                                    f"   WHERE id = "
+                                    f"{self.question_base.item(self.question_base.currentRow(), 0).text()}"
+                                    ).fetchone())
+        else:
+            data = list(cur.execute(f"SELECT * FROM tasks"
+                                    f"   WHERE id = "
+                                    f"{self.test_questions.item(self.test_questions.currentRow(), 0).text()}"
+                                    ).fetchone())
+
+        data[2] = json.loads(data[2])
+
+        info = ShowTaskInfoWindow(self, data)
+        info.show()
+
+    def delete_test_task(self):
+        self.test_creation_sl.setText('')
+        self.test_creation_sl.setStyleSheet('')
+        self.total_sl.setText('')
+        self.total_sl.setStyleSheet('')
+        if self.test_questions.currentRow() != -1:
+            self.test_task_sl.setText('')
+            self.test_task_sl.setStyleSheet('')
+            self.question_base.setRowCount(self.question_base.rowCount() + 1)
+
+            item = QTableWidgetItem(str(self.test_questions.item(self.test_questions.currentRow(), 0).text()))
+            item.setFlags(Qt.ItemIsEnabled)
+            self.question_base.setItem(self.question_base.rowCount() - 1, 0,
+                                       item)
+
+            item = QTableWidgetItem(str(self.test_questions.item(self.test_questions.currentRow(), 1).text()))
+            item.setFlags(Qt.ItemIsEnabled)
+            self.question_base.setItem(self.question_base.rowCount() - 1, 1,
+                                       item)
+
+            self.test_questions.removeRow(self.test_questions.currentRow())
+        else:
+            self.test_task_sl.setText('Задание не выбрано')
+            self.test_task_sl.setStyleSheet('border-style: solid; border-width: 1px; border-color: red;')
+            return
+
+    def delete_base_task(self):
+        if self.question_base.currentRow() == -1:
+            info = 'Для удаления вопроса из БД выберите его в таблице' \
+                   ' справа и нажмите кнопку "удалить вопрос из базы".'
+            info_win = InfoWindow(info)
+            info_win.show()
+            return
+        
+    def create_test(self):
+        self.test_task_sl.setText('')
+        self.test_task_sl.setStyleSheet('')
+        self.test_creation_sl.setText('')
+        self.test_creation_sl.setStyleSheet('')
+
+        if self.testname_val.text().strip() == '':
+            self.test_task_sl.setText('Название теста не задано!')
+            self.test_task_sl.setStyleSheet('border-style: solid; border-width: 1px; border-color: red;')
+            return
+        if self.test_questions.rowCount() == 0:
+            self.test_creation_sl.setText('В тест не добавлены вопросы')
+            self.test_creation_sl.setStyleSheet('border-style: solid; border-width: 1px; border-color: red;')
+            return
+
+        con = sqlite3.connect('database.sqlite')
+
+        cur = con.cursor()
+
+        tasks_id = []
+        for row_cnt in range(self.test_questions.rowCount()):
+            tasks_id.append(int(self.test_questions.item(row_cnt, 0).text()))
+        tasks_id = json.dumps(tasks_id)
+
+        try:
+            cur.execute(f"INSERT INTO tests(title, tasks_id_json) VALUES('{self.testname_val.text().strip()}',"
+                        f"'{tasks_id}')")
+
+            self.total_sl.setText('Тест успешно создан!')
+            self.total_sl.setStyleSheet('border-style: solid; border-width: 1px; border-color: green;')
+            self.testname_val.setText('')
+
+            con.commit()
+
+            data = cur.execute(f"SELECT id, name FROM tasks"
+                               ).fetchall()
+
+            self.fill_base_table(data)
+
+            for row_cnt in range(self.test_questions.rowCount()):
+                self.test_questions.removeRow(row_cnt)
+        except sqlite3.Error:
+            self.total_sl.setText('Тест с таким именем уже существует!')
+            self.total_sl.setStyleSheet('border-style: solid; border-width: 1px; border-color: red;')
+
+    def show_instruction(self):
+        instruction = 'Для добавления вопроса в свой тест, выберите его в ' \
+                      'правой таблице одиночным нажатием мыши и нажмите на ' \
+                      'кнопку "Добавить вопрос в тест". Удаление выглядит ' \
+                      'аналогично - выберите в таблице слева вопрос и нажмите ' \
+                      'кнопку "Удалить задание из теста". Если вы хотите посмотреть' \
+                      ' более подробную информацию по вопросу (текст вопроса, ' \
+                      'варианты ответа и верный ответ), активируйте соответствующую ' \
+                      'ячейку в таблице двойным кликом.'
+        instr_win = InfoWindow(instruction, self)
+        instr_win.show()
+
+    def fill_base_table(self, data):
+        self.question_base.setRowCount(len(data))
+
+        for i in range(len(data)):
+            for j in range(2):
+                item = QTableWidgetItem(str(data[i][j]))
+                item.setFlags(Qt.ItemIsEnabled)
+                self.question_base.setItem(i, j, item)
+
+    def return_parent(self):
+        self.close()
+        self.parent.show()
